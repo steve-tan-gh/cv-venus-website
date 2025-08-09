@@ -238,9 +238,9 @@ export default function EditProductPage() {
         slug: formData.slug.trim(),
         description: formData.description.trim() || null,
         price: parseFloat(formData.price),
-        compare_price: formData.comparePrice ? parseFloat(formData.comparePrice) : null,
+        // compare_price: formData.comparePrice ? parseFloat(formData.comparePrice) : null,
         stock: parseInt(formData.stock),
-        sku: formData.sku.trim() || null,
+        // sku: formData.sku.trim() || null,
         category_id: formData.categoryId ? parseInt(formData.categoryId) : null,
         brand_id: formData.brandId ? parseInt(formData.brandId) : null,
         image_url: formData.imageUrl.trim() || null,
@@ -248,7 +248,7 @@ export default function EditProductPage() {
         is_featured: formData.isFeatured,
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("products")
         .update(updateData)
         .eq("id", productId)

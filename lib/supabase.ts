@@ -56,6 +56,8 @@ export interface Order {
   id: number
   user_id: string
   total_amount: number
+  discount_amount?: number
+  final_amount: number
   status: "pending" | "packed" | "shipped" | "delivered" | "cancelled"
   shipping_address: string
   shipping_phone: string
@@ -64,6 +66,7 @@ export interface Order {
   created_at: string
   updated_at: string
   order_items?: OrderItem[]
+  applied_discounts?: AppliedDiscount[]
   profiles?: Profile
 }
 
@@ -72,6 +75,7 @@ export interface OrderItem {
   order_id: number
   product_id: number
   quantity: number
+  free_quantity?: number
   price: number
   created_at: string
   products?: Product
@@ -85,4 +89,46 @@ export interface CartItem {
   created_at: string
   updated_at: string
   products?: Product
+}
+
+export interface Discount {
+  id: number
+  name: string
+  description?: string
+  type: "buy_x_get_y_free" | "buy_x_get_percentage"
+  min_quantity: number
+  applies_to: "all" | "category" | "brand" | "product"
+  applies_to_id?: number
+  free_quantity?: number
+  discount_percentage?: number
+  is_active: boolean
+  start_date?: string
+  end_date?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AppliedDiscount {
+  id: number
+  order_id: number
+  discount_id: number
+  discount_name: string
+  discount_type: string
+  original_quantity: number
+  free_quantity?: number
+  discount_amount?: number
+  created_at: string
+}
+
+export interface CartWithDiscounts {
+  items: CartItem[]
+  subtotal: number
+  appliedDiscounts: {
+    discount: Discount
+    affectedItems: CartItem[]
+    freeQuantity: number
+    discountAmount: number
+  }[]
+  totalDiscount: number
+  finalTotal: number
 }

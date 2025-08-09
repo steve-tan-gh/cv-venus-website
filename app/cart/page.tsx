@@ -2,24 +2,26 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
 import Link from "next/link"
-import { motion, AnimatePresence } from "framer-motion"
-import { Trash2, Plus, Minus, ShoppingBag, ArrowRight } from "lucide-react"
+import Image from "next/image"
+import { motion } from "framer-motion"
+import { Minus, Plus, Trash2, ShoppingBag, Gift, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { VenusBackground } from "@/components/ui/venus-background"
 import { Navbar } from "@/components/navbar"
+import { updateCartItemQuantity, removeFromCart, calculateCartWithDiscounts } from "@/lib/cart"
 import { supabase } from "@/lib/supabase"
-import { getCartItems, updateCartItem, removeFromCart } from "@/lib/cart"
 import { toast } from "sonner"
-import type { CartItem } from "@/lib/supabase"
+import type { CartWithDiscounts } from "@/lib/supabase"
 
 export default function CartPage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>([])
-  const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
+  const [cartData, setCartData] = useState<CartWithDiscounts | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [updating, setUpdating] = useState<number | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -27,54 +29,60 @@ export default function CartPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         setUser(user)
-        fetchCartItems(user.id)
+        fetchCartData(user.id)
       } else {
         router.push("/auth/signin")
       }
     })
   }, [router])
 
-  const fetchCartItems = async (userId: string) => {
+  const fetchCartData = async (userId: string) => {
     try {
-      const items = await getCartItems(userId)
-      setCartItems(items)
+      const data = await calculateCartWithDiscounts(userId)
+      setCartData(data)
     } catch (error) {
-      console.error("Error fetching cart items:", error)
-      toast.error("Failed to load cart items")
+      console.error("Error fetching cart:", error)
+      toast.error("Failed to load cart")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleUpdateQuantity = async (itemId: number, newQuantity: number) => {
+  const handleUpdateQuantity = async (cartItemId: number, newQuantity: number) => {
+    if (!user) return
+
+    setUpdating(cartItemId)
     try {
-      await updateCartItem(itemId, newQuantity)
-      setCartItems((items) =>
-        items
-          .map((item) => (item.id === itemId ? { ...item, quantity: newQuantity } : item))
-          .filter((item) => item.quantity > 0),
-      )
-      toast.success("Cart updated!")
-    } catch (error) {
-      console.error("Error updating cart item:", error)
-      toast.error("Failed to update cart")
+      await updateCartItemQuantity(cartItemId, newQuantity, user.id)
+      await fetchCartData(user.id)
+      toast.success("Cart updated successfully!")
+    } catch (error: any) {
+      console.error("Error updating cart:", error)
+      toast.error(error.message || "Failed to update cart")
+    } finally {
+      setUpdating(null)
     }
   }
 
-  const handleRemoveItem = async (itemId: number) => {
+  const handleRemoveItem = async (cartItemId: number) => {
+    if (!user) return
+
     try {
-      await removeFromCart(itemId)
-      setCartItems((items) => items.filter((item) => item.id !== itemId))
+      await removeFromCart(cartItemId, user.id)
+      await fetchCartData(user.id)
       toast.success("Item removed from cart!")
     } catch (error) {
-      console.error("Error removing cart item:", error)
+      console.error("Error removing item:", error)
       toast.error("Failed to remove item")
     }
   }
 
-  const subtotal = cartItems.reduce((sum, item) => sum + (item.products?.price || 0) * item.quantity, 0)
-  const shipping = subtotal > 100000 ? 0 : 10000 // Free shipping over 100k
-  const total = subtotal + shipping
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+    }).format(price)
+  }
 
   if (loading) {
     return (
@@ -83,11 +91,34 @@ export default function CartPage() {
         <Navbar />
         <div className="container mx-auto px-4 py-8">
           <div className="animate-pulse space-y-4">
-            <div className="bg-blue-300/20 h-8 w-32 rounded"></div>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-blue-300/20 h-24 rounded-lg"></div>
-            ))}
+            <div className="bg-blue-300/20 h-8 w-48 rounded"></div>
+            <div className="bg-blue-300/20 h-96 rounded-lg"></div>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!cartData || cartData.items.length === 0) {
+    return (
+      <div className="min-h-screen text-white">
+        <VenusBackground />
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16">
+            <ShoppingBag className="w-24 h-24 mx-auto mb-6 text-blue-400" />
+            <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
+            <p className="text-blue-200 mb-8">Add some products to get started!</p>
+            <Button
+              asChild
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              <Link href="/shop">
+                Continue Shopping
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Link>
+            </Button>
+          </motion.div>
         </div>
       </div>
     )
@@ -100,171 +131,165 @@ export default function CartPage() {
 
       <div className="container mx-auto px-4 py-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <h1 className="text-3xl font-bold mb-4">Shopping Cart</h1>
-          <p className="text-blue-200">
-            {cartItems.length} {cartItems.length === 1 ? "item" : "items"} in your cart
-          </p>
+          <h1 className="text-3xl font-bold mb-2">Shopping Cart</h1>
+          <p className="text-blue-200">Review your items and proceed to checkout</p>
         </motion.div>
 
-        {cartItems.length === 0 ? (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-12">
-            <ShoppingBag className="w-24 h-24 mx-auto mb-6 text-blue-400" />
-            <h2 className="text-2xl font-bold mb-4">Your cart is empty</h2>
-            <p className="text-blue-200 mb-8">Add some products to get started!</p>
-            <Button
-              asChild
-              size="lg"
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-            >
-              <Link href="/shop">
-                Continue Shopping <ArrowRight className="ml-2 w-4 h-4" />
-              </Link>
-            </Button>
-          </motion.div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Cart Items */}
-            <div className="lg:col-span-2 space-y-4">
-              <AnimatePresence>
-                {cartItems.map((item, index) => (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, x: -100 }}
-                    transition={{ delay: index * 0.1 }}
-                    layout
-                  >
-                    <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
-                      <CardContent className="p-6">
-                        <div className="flex flex-col sm:flex-row gap-4">
-                          {/* Product Image */}
-                          <div className="w-full sm:w-24 h-24 flex-shrink-0">
-                            <Image
-                              src={item.products?.image_url || "/placeholder.svg?height=100&width=100"}
-                              alt={item.products?.name || "Product"}
-                              width={100}
-                              height={100}
-                              className="w-full h-full object-cover rounded-lg"
-                            />
-                          </div>
-
-                          {/* Product Details */}
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start mb-2">
-                              <h3 className="font-semibold text-white">{item.products?.name}</h3>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveItem(item.id)}
-                                className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-
-                            <p className="text-blue-200 text-sm mb-4">
-                              Rp {item.products?.price?.toLocaleString("id-ID")} each
-                            </p>
-
-                            <div className="flex items-center justify-between">
-                              {/* Quantity Controls */}
-                              <div className="flex items-center space-x-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)}
-                                  disabled={item.quantity <= 1}
-                                  className="border-blue-400 text-blue-100 hover:bg-blue-800/50"
-                                >
-                                  <Minus className="w-4 h-4" />
-                                </Button>
-                                <span className="w-12 text-center font-semibold">{item.quantity}</span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
-                                  disabled={item.quantity >= (item.products?.stock || 0)}
-                                  className="border-blue-400 text-blue-100 hover:bg-blue-800/50"
-                                >
-                                  <Plus className="w-4 h-4" />
-                                </Button>
-                              </div>
-
-                              {/* Item Total */}
-                              <div className="text-right">
-                                <p className="font-bold text-cyan-300">
-                                  Rp {((item.products?.price || 0) * item.quantity).toLocaleString("id-ID")}
-                                </p>
-                                {item.quantity >= (item.products?.stock || 0) && (
-                                  <p className="text-xs text-orange-400">Max stock reached</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Cart Items */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+            className="lg:col-span-2"
+          >
+            <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
+              <CardHeader>
+                <CardTitle className="text-white">Cart Items ({cartData.items.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {cartData.items.map((item) => (
+                  <div key={item.id} className="flex gap-4 p-4 bg-blue-800/20 rounded-lg">
+                    <div className="relative w-20 h-20 bg-blue-700/30 rounded-lg overflow-hidden">
+                      {item.products?.image_url ? (
+                        <Image
+                          src={item.products.image_url || "/placeholder.svg"}
+                          alt={item.products.name}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ShoppingBag className="w-8 h-8 text-blue-400" />
                         </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-
-            {/* Order Summary */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-              <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20 sticky top-24">
-                <CardContent className="p-6">
-                  <h2 className="text-xl font-bold mb-6">Order Summary</h2>
-
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-blue-200">Subtotal</span>
-                      <span className="font-semibold">Rp {subtotal.toLocaleString("id-ID")}</span>
+                      )}
                     </div>
 
-                    <div className="flex justify-between">
-                      <span className="text-blue-200">Shipping</span>
-                      <span className="font-semibold">
-                        {shipping === 0 ? (
-                          <span className="text-green-400">Free</span>
-                        ) : (
-                          `Rp ${shipping.toLocaleString("id-ID")}`
-                        )}
-                      </span>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-white mb-1">{item.products?.name}</h3>
+                      <p className="text-blue-200 text-sm mb-2">{formatPrice(item.products?.price || 0)} each</p>
+
+                      {/* Stock warning */}
+                      {(item.products?.stock || 0) <= 5 && (
+                        <Badge variant="destructive" className="mb-2">
+                          Only {item.products?.stock} left in stock
+                        </Badge>
+                      )}
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)}
+                            disabled={updating === item.id || item.quantity <= 1}
+                            className="w-8 h-8 p-0 border-blue-400 text-blue-100 hover:bg-blue-700/50"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </Button>
+                          <span className="w-8 text-center text-white font-semibold">{item.quantity}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
+                            disabled={updating === item.id || item.quantity >= (item.products?.stock || 0)}
+                            className="w-8 h-8 p-0 border-blue-400 text-blue-100 hover:bg-blue-700/50"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
 
-                    {shipping > 0 && <p className="text-xs text-blue-300">Free shipping on orders over Rp 100,000</p>}
-
-                    <Separator className="bg-blue-600/50" />
-
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total</span>
-                      <span className="text-cyan-300">Rp {total.toLocaleString("id-ID")}</span>
+                    <div className="text-right">
+                      <p className="text-white font-semibold">
+                        {formatPrice((item.products?.price || 0) * item.quantity)}
+                      </p>
                     </div>
                   </div>
+                ))}
+              </CardContent>
+            </Card>
+          </motion.div>
 
-                  <Button
-                    asChild
-                    className="w-full mt-6 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                    size="lg"
-                  >
-                    <Link href="/checkout">
-                      Proceed to Checkout <ArrowRight className="ml-2 w-4 h-4" />
-                    </Link>
-                  </Button>
+          {/* Order Summary */}
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
+            <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20 sticky top-4">
+              <CardHeader>
+                <CardTitle className="text-white">Order Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between text-blue-200">
+                  <span>Subtotal</span>
+                  <span>{formatPrice(cartData.subtotal)}</span>
+                </div>
 
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="w-full mt-3 border-blue-400 text-blue-100 hover:bg-blue-800/50 bg-transparent"
-                  >
-                    <Link href="/shop">Continue Shopping</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
-        )}
+                {/* Applied Discounts */}
+                {cartData.appliedDiscounts.length > 0 && (
+                  <div className="space-y-2">
+                    <Separator className="bg-blue-600/50" />
+                    <h4 className="text-green-400 font-semibold flex items-center gap-2">
+                      <Gift className="w-4 h-4" />
+                      Applied Discounts
+                    </h4>
+                    {cartData.appliedDiscounts.map((applied, index) => (
+                      <div key={index} className="bg-green-900/20 p-3 rounded-lg">
+                        <p className="text-green-300 font-medium text-sm">{applied.discount.name}</p>
+                        <div className="flex justify-between text-sm mt-1">
+                          {applied.freeQuantity > 0 && (
+                            <span className="text-green-200">+{applied.freeQuantity} free items</span>
+                          )}
+                          <span className="text-green-200">-{formatPrice(applied.discountAmount)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {cartData.totalDiscount > 0 && (
+                  <div className="flex justify-between text-green-400 font-semibold">
+                    <span>Total Savings</span>
+                    <span>-{formatPrice(cartData.totalDiscount)}</span>
+                  </div>
+                )}
+
+                <Separator className="bg-blue-600/50" />
+
+                <div className="flex justify-between text-white text-lg font-bold">
+                  <span>Total</span>
+                  <span>{formatPrice(cartData.finalTotal)}</span>
+                </div>
+
+                <Button
+                  asChild
+                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                >
+                  <Link href="/checkout">
+                    Proceed to Checkout
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Link>
+                </Button>
+
+                <Button
+                  asChild
+                  variant="outline"
+                  className="w-full border-blue-400 text-blue-100 hover:bg-blue-700/50 bg-transparent"
+                >
+                  <Link href="/shop">Continue Shopping</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
       </div>
     </div>
   )

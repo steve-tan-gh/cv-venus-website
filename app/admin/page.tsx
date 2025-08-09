@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { ShoppingBag, Users, Package, DollarSign, TrendingUp, Eye, Plus, Settings, BarChart3, Tag } from 'lucide-react'
+import { ShoppingBag, Users, Package, DollarSign, TrendingUp, Eye, Plus, Settings, BarChart3, Tag, Percent } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { VenusBackground } from "@/components/ui/venus-background"
@@ -228,9 +228,9 @@ export default function AdminDashboard() {
           className="mb-8"
         >
           <h2 className="text-xl font-semibold mb-4 text-white">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <Button asChild className="h-20 flex-col gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-              <Link href="/admin/products/add">
+              <Link href="/admin/products">
                 <Plus className="w-6 h-6" />
                 Add Product
               </Link>
@@ -257,6 +257,12 @@ export default function AdminDashboard() {
               <Link href="/admin/brands">
                 <Tag className="w-6 h-6" />
                 Brands
+              </Link>
+            </Button>
+            <Button asChild className="h-20 flex-col gap-2 bg-cyan-600 hover:bg-cyan-700 text-white">
+              <Link href="/admin/discounts">
+                <Percent className="w-6 h-6" />
+                Discount
               </Link>
             </Button>
           </div>

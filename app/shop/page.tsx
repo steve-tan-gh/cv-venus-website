@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { Search, Filter, Grid, List, Star, ShoppingCart } from "lucide-react"
+import { Search, Filter, Grid, List, Star, ShoppingCart, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -126,9 +126,9 @@ export default function ShopPage() {
     try {
       await addToCart(user.id, productId, 1)
       toast.success("Item added to cart!")
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding to cart:", error)
-      toast.error("Failed to add item to cart")
+      toast.error(error.message || "Failed to add item to cart")
     }
   }
 
@@ -153,6 +153,12 @@ export default function ShopPage() {
     setSelectedCategories([])
     setSelectedBrands([])
     setSortBy("name")
+  }
+
+  const getStockStatus = (stock: number) => {
+    if (stock === 0) return { label: "Out of Stock", color: "bg-red-600", textColor: "text-red-100" }
+    if (stock <= 5) return { label: "Low Stock", color: "bg-orange-600", textColor: "text-orange-100" }
+    return { label: "In Stock", color: "bg-green-600", textColor: "text-green-100" }
   }
 
   return (
@@ -340,93 +346,110 @@ export default function ShopPage() {
               viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "grid-cols-1"
             }`}
           >
-            {filteredProducts.map((product, index) => (
-              <motion.div
-                key={product.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                whileHover={{ y: -5 }}
-              >
-                <Card
-                  className={`bg-white/10 backdrop-blur-sm border-blue-400/20 hover:bg-white/15 transition-all duration-300 group h-full ${
-                    viewMode === "list" ? "flex" : ""
-                  }`}
+            {filteredProducts.map((product, index) => {
+              const stockStatus = getStockStatus(product.stock)
+
+              return (
+                <motion.div
+                  key={product.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  whileHover={{ y: -5 }}
                 >
-                  <CardContent className={`p-6 ${viewMode === "list" ? "flex gap-6 items-center w-full" : ""}`}>
-                    <div className={`relative ${viewMode === "list" ? "w-32 h-32 flex-shrink-0" : "mb-4"}`}>
-                      <Image
-                        src={product.image_url || "/placeholder.svg?height=200&width=200"}
-                        alt={product.name}
-                        width={200}
-                        height={200}
-                        className={`object-cover rounded-lg group-hover:scale-105 transition-transform duration-300 ${
-                          viewMode === "list" ? "w-full h-full" : "w-full h-48"
-                        }`}
-                      />
-                      <Badge className="absolute top-2 right-2 bg-blue-600">{product.brands?.name}</Badge>
-                      {product.stock <= 5 && product.stock > 0 && (
-                        <Badge className="absolute top-2 left-2 bg-orange-600">Low Stock</Badge>
-                      )}
-                      {product.stock === 0 && <Badge className="absolute top-2 left-2 bg-red-600">Out of Stock</Badge>}
-                    </div>
+                  <Card
+                    className={`bg-white/10 backdrop-blur-sm border-blue-400/20 hover:bg-white/15 transition-all duration-300 group h-full ${
+                      viewMode === "list" ? "flex" : ""
+                    } ${product.stock === 0 ? "opacity-75" : ""}`}
+                  >
+                    <CardContent className={`p-6 ${viewMode === "list" ? "flex gap-6 items-center w-full" : ""}`}>
+                      <div className={`relative ${viewMode === "list" ? "w-32 h-32 flex-shrink-0" : "mb-4"}`}>
+                        <Image
+                          src={product.image_url || "/placeholder.svg?height=200&width=200"}
+                          alt={product.name}
+                          width={200}
+                          height={200}
+                          className={`object-cover rounded-lg group-hover:scale-105 transition-transform duration-300 ${
+                            viewMode === "list" ? "w-full h-full" : "w-full h-48"
+                          } ${product.stock === 0 ? "grayscale" : ""}`}
+                        />
+                        <Badge className="absolute top-2 right-2 bg-blue-600">{product.brands?.name}</Badge>
+                        <Badge className={`absolute top-2 left-2 ${stockStatus.color} ${stockStatus.textColor}`}>
+                          {stockStatus.label}
+                        </Badge>
+                        {product.stock === 0 && (
+                          <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                            <div className="text-center">
+                              <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+                              <p className="text-red-100 font-semibold">Out of Stock</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
-                    <div className={`${viewMode === "list" ? "flex-1" : ""}`}>
-                      <div className={`${viewMode === "list" ? "flex justify-between items-start" : ""}`}>
-                        <div className={`${viewMode === "list" ? "flex-1 mr-4" : ""}`}>
-                          <h3 className="text-lg font-semibold mb-2 text-white group-hover:text-blue-200 transition-colors">
-                            {product.name}
-                          </h3>
+                      <div className={`${viewMode === "list" ? "flex-1" : ""}`}>
+                        <div className={`${viewMode === "list" ? "flex justify-between items-start" : ""}`}>
+                          <div className={`${viewMode === "list" ? "flex-1 mr-4" : ""}`}>
+                            <h3 className="text-lg font-semibold mb-2 text-white group-hover:text-blue-200 transition-colors">
+                              {product.name}
+                            </h3>
 
-                          <p className="text-blue-200 text-sm mb-3 line-clamp-2">{product.description}</p>
+                            <p className="text-blue-200 text-sm mb-3 line-clamp-2">{product.description}</p>
 
-                          <div className="flex items-center space-x-2 mb-3">
-                            <Badge variant="outline" className="border-blue-400 text-blue-200">
-                              {product.categories?.name}
-                            </Badge>
-                            <div className="flex items-center space-x-1">
-                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                              <span className="text-sm text-blue-200">4.8</span>
+                            <div className="flex items-center space-x-2 mb-3">
+                              <Badge variant="outline" className="border-blue-400 text-blue-200">
+                                {product.categories?.name}
+                              </Badge>
+                              <div className="flex items-center space-x-1">
+                                <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                                <span className="text-sm text-blue-200">4.8</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className={`${viewMode === "list" ? "text-right" : ""}`}>
+                            <div className="flex items-center justify-between mb-4">
+                              <span className="text-xl font-bold text-cyan-300">
+                                Rp {product.price.toLocaleString("id-ID")}
+                              </span>
+                              <span className="text-sm text-blue-300">Stock: {product.stock}</span>
+                            </div>
+
+                            <div className={`flex gap-2 ${viewMode === "list" ? "justify-end" : ""}`}>
+                              <Button
+                                asChild
+                                variant="outline"
+                                size="sm"
+                                className="border-blue-400 text-blue-100 hover:bg-blue-800/50 bg-transparent"
+                              >
+                                <Link href={`/shop/${product.slug}`}>View Details</Link>
+                              </Button>
+
+                              {user && product.stock > 0 && (
+                                <Button
+                                  onClick={() => handleAddToCart(product.id)}
+                                  size="sm"
+                                  className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+                                >
+                                  <ShoppingCart className="w-4 h-4 mr-1" />
+                                  Add to Cart
+                                </Button>
+                              )}
+
+                              {product.stock === 0 && (
+                                <Button disabled size="sm" className="bg-gray-600 cursor-not-allowed">
+                                  Out of Stock
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </div>
-
-                        <div className={`${viewMode === "list" ? "text-right" : ""}`}>
-                          <div className="flex items-center justify-between mb-4">
-                            <span className="text-xl font-bold text-cyan-300">
-                              Rp {product.price.toLocaleString("id-ID")}
-                            </span>
-                            <span className="text-sm text-blue-300">Stock: {product.stock}</span>
-                          </div>
-
-                          <div className={`flex gap-2 ${viewMode === "list" ? "justify-end" : ""}`}>
-                            <Button
-                              asChild
-                              variant="outline"
-                              size="sm"
-                              className="border-blue-400 text-blue-100 hover:bg-blue-800/50 bg-transparent"
-                            >
-                              <Link href={`/shop/${product.slug}`}>View Details</Link>
-                            </Button>
-
-                            {user && product.stock > 0 && (
-                              <Button
-                                onClick={() => handleAddToCart(product.id)}
-                                size="sm"
-                                className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                              >
-                                <ShoppingCart className="w-4 h-4 mr-1" />
-                                Add to Cart
-                              </Button>
-                            )}
-                          </div>
-                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )
+            })}
           </motion.div>
         )}
       </div>

@@ -5,7 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { CreditCard, MapPin, ArrowLeft, CheckCircle } from "lucide-react"
+import { CreditCard, MapPin, Gift, ShoppingBag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -14,26 +14,25 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { VenusBackground } from "@/components/ui/venus-background"
 import { Navbar } from "@/components/navbar"
+import { calculateCartWithDiscounts, clearCart } from "@/lib/cart"
 import { supabase } from "@/lib/supabase"
-import { getCartItems, clearCart } from "@/lib/cart"
 import { toast } from "sonner"
-import type { CartItem } from "@/lib/supabase"
+import type { CartWithDiscounts, Profile } from "@/lib/supabase"
+import Link from "next/link"
 
 export default function CheckoutPage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
   const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const router = useRouter()
-
-  // Form data
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [cartData, setCartData] = useState<CartWithDiscounts | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(false)
   const [formData, setFormData] = useState({
     fullName: "",
     phone: "",
     address: "",
     notes: "",
   })
+  const router = useRouter()
 
   useEffect(() => {
     // Get current user
@@ -41,7 +40,6 @@ export default function CheckoutPage() {
       if (user) {
         setUser(user)
         fetchUserData(user.id)
-        fetchCartItems(user.id)
       } else {
         router.push("/auth/signin")
       }
@@ -50,46 +48,73 @@ export default function CheckoutPage() {
 
   const fetchUserData = async (userId: string) => {
     try {
-      const { data } = await supabase.from("profiles").select("*").eq("id", userId).single()
+      // Fetch user profile
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single()
 
-      if (data) {
-        setProfile(data)
-        setFormData({
-          fullName: data.full_name || "",
-          phone: data.phone || "",
-          address: data.address || "",
-          notes: "",
-        })
-      }
-    } catch (error) {
-      console.error("Error fetching user data:", error)
-    }
-  }
+      if (profileError) throw profileError
 
-  const fetchCartItems = async (userId: string) => {
-    try {
-      const items = await getCartItems(userId)
-      if (items.length === 0) {
+      setProfile(profileData)
+      setFormData({
+        fullName: profileData.full_name || "",
+        phone: profileData.phone || "",
+        address: profileData.address || "",
+        notes: "",
+      })
+
+      // Fetch cart data
+      const cartData = await calculateCartWithDiscounts(userId)
+      setCartData(cartData)
+
+      // Redirect if cart is empty
+      if (!cartData || cartData.items.length === 0) {
         router.push("/cart")
         return
       }
-      setCartItems(items)
     } catch (error) {
-      console.error("Error fetching cart items:", error)
-      toast.error("Failed to load cart items")
+      console.error("Error fetching user data:", error)
+      toast.error("Failed to load checkout data")
+      router.push("/cart")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+  const validateStock = async (): Promise<boolean> => {
+    if (!cartData) return false
+
+    for (const item of cartData.items) {
+      const { data: product, error } = await supabase
+        .from("products")
+        .select("stock, is_active")
+        .eq("id", item.product_id)
+        .single()
+
+      if (error) {
+        toast.error("Failed to validate stock")
+        return false
+      }
+
+      if (!product.is_active) {
+        toast.error(`${item.products?.name} is no longer available`)
+        return false
+      }
+
+      if (product.stock < item.quantity) {
+        toast.error(`Not enough stock for ${item.products?.name}. Only ${product.stock} available.`)
+        return false
+      }
+    }
+
+    return true
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user || cartItems.length === 0) return
+    if (!user || !cartData || processing) return
 
     // Validate form
     if (!formData.fullName || !formData.phone || !formData.address) {
@@ -97,20 +122,24 @@ export default function CheckoutPage() {
       return
     }
 
-    setSubmitting(true)
+    setProcessing(true)
 
     try {
-      // Calculate total
-      const totalAmount = cartItems.reduce((sum, item) => sum + (item.products?.price || 0) * item.quantity, 0)
-      const shipping = totalAmount > 100000 ? 0 : 10000
-      const finalTotal = totalAmount + shipping
+      // Validate stock before processing
+      const stockValid = await validateStock()
+      if (!stockValid) {
+        setProcessing(false)
+        return
+      }
 
       // Create order
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
           user_id: user.id,
-          total_amount: finalTotal,
+          total_amount: cartData.subtotal,
+          discount_amount: cartData.totalDiscount,
+          final_amount: cartData.finalTotal,
           status: "pending",
           shipping_address: formData.address,
           shipping_phone: formData.phone,
@@ -121,17 +150,67 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError
 
-      // Create order items
-      const orderItems = cartItems.map((item) => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        price: item.products?.price || 0,
-      }))
+      // Create order items and update stock
+      for (const item of cartData.items) {
+        // Calculate free quantity for this item
+        let freeQuantityForItem = 0
+        for (const applied of cartData.appliedDiscounts) {
+          if (applied.freeQuantity > 0 && applied.affectedItems.some((ai) => ai.id === item.id)) {
+            // Distribute free quantity proportionally
+            const totalAffectedQuantity = applied.affectedItems.reduce((sum, ai) => sum + ai.quantity, 0)
+            const itemProportion = item.quantity / totalAffectedQuantity
+            freeQuantityForItem += Math.floor(applied.freeQuantity * itemProportion)
+          }
+        }
 
-      const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
+        // Insert order item
+        const { error: itemError } = await supabase.from("order_items").insert({
+          order_id: order.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          free_quantity: freeQuantityForItem,
+          price: item.products?.price || 0,
+        })
 
-      if (itemsError) throw itemsError
+        if (itemError) throw itemError
+
+        // Get current stock and update it
+        const { data: currentProduct, error: fetchError } = await supabase
+          .from("products")
+          .select("stock")
+          .eq("id", item.product_id)
+          .single()
+
+        if (fetchError) throw fetchError
+
+        const newStock = currentProduct.stock - (item.quantity + freeQuantityForItem)
+
+        // Update product stock
+        const { error: stockError } = await supabase
+          .from("products")
+          .update({
+            stock: newStock,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", item.product_id)
+
+        if (stockError) throw stockError
+      }
+
+      // Record applied discounts
+      for (const applied of cartData.appliedDiscounts) {
+        const { error: discountError } = await supabase.from("applied_discounts").insert({
+          order_id: order.id,
+          discount_id: applied.discount.id,
+          discount_name: applied.discount.name,
+          discount_type: applied.discount.type,
+          original_quantity: applied.affectedItems.reduce((sum, item) => sum + item.quantity, 0),
+          free_quantity: applied.freeQuantity,
+          discount_amount: applied.discountAmount,
+        })
+
+        if (discountError) throw discountError
+      }
 
       // Update user profile if needed
       if (
@@ -139,7 +218,7 @@ export default function CheckoutPage() {
         formData.phone !== profile?.phone ||
         formData.address !== profile?.address
       ) {
-        await supabase
+        const { error: profileError } = await supabase
           .from("profiles")
           .update({
             full_name: formData.fullName,
@@ -148,6 +227,8 @@ export default function CheckoutPage() {
             updated_at: new Date().toISOString(),
           })
           .eq("id", user.id)
+
+        if (profileError) console.error("Error updating profile:", profileError)
       }
 
       // Clear cart
@@ -155,17 +236,20 @@ export default function CheckoutPage() {
 
       toast.success("Order placed successfully!")
       router.push(`/orders/${order.id}`)
-    } catch (error) {
-      console.error("Error creating order:", error)
-      toast.error("Failed to place order. Please try again.")
+    } catch (error: any) {
+      console.error("Error processing order:", error)
+      toast.error(error.message || "Failed to process order")
     } finally {
-      setSubmitting(false)
+      setProcessing(false)
     }
   }
 
-  const subtotal = cartItems.reduce((sum, item) => sum + (item.products?.price || 0) * item.quantity, 0)
-  const shipping = subtotal > 100000 ? 0 : 10000
-  const total = subtotal + shipping
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+    }).format(price)
+  }
 
   if (loading) {
     return (
@@ -174,12 +258,31 @@ export default function CheckoutPage() {
         <Navbar />
         <div className="container mx-auto px-4 py-8">
           <div className="animate-pulse space-y-4">
-            <div className="bg-blue-300/20 h-8 w-32 rounded"></div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="bg-blue-300/20 h-96 rounded-lg"></div>
-              <div className="bg-blue-300/20 h-96 rounded-lg"></div>
-            </div>
+            <div className="bg-blue-300/20 h-8 w-48 rounded"></div>
+            <div className="bg-blue-300/20 h-96 rounded-lg"></div>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!cartData || cartData.items.length === 0) {
+    return (
+      <div className="min-h-screen text-white">
+        <VenusBackground />
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16">
+            <ShoppingBag className="w-24 h-24 mx-auto mb-6 text-blue-400" />
+            <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
+            <p className="text-blue-200 mb-8">Add some products to checkout!</p>
+            <Button
+              asChild
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              <Link href="/shop">Continue Shopping</Link>
+            </Button>
+          </motion.div>
         </div>
       </div>
     )
@@ -191,58 +294,58 @@ export default function CheckoutPage() {
       <Navbar />
 
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <Button onClick={() => router.back()} variant="ghost" className="text-blue-200 hover:text-white p-0 mb-4">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Cart
-          </Button>
-          <h1 className="text-3xl font-bold mb-4">Checkout</h1>
+          <h1 className="text-3xl font-bold mb-2">Checkout</h1>
           <p className="text-blue-200">Complete your order</p>
         </motion.div>
 
         <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Shipping Information */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              className="lg:col-span-2 space-y-6"
+            >
               <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
                 <CardHeader>
-                  <CardTitle className="flex items-center text-white">
-                    <MapPin className="w-5 h-5 mr-2" />
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <MapPin className="w-5 h-5" />
                     Shipping Information
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="fullName" className="text-blue-200">
-                      Full Name *
-                    </Label>
-                    <Input
-                      id="fullName"
-                      name="fullName"
-                      type="text"
-                      value={formData.fullName}
-                      onChange={handleInputChange}
-                      required
-                      className="bg-blue-800/50 border-blue-600 text-white placeholder-blue-300 focus:border-blue-400"
-                      placeholder="Enter your full name"
-                    />
-                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="fullName" className="text-blue-200">
+                        Full Name *
+                      </Label>
+                      <Input
+                        id="fullName"
+                        type="text"
+                        value={formData.fullName}
+                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                        required
+                        className="bg-blue-800/50 border-blue-600 text-white placeholder-blue-300 focus:border-blue-400"
+                        placeholder="Enter your full name"
+                      />
+                    </div>
 
-                  <div>
-                    <Label htmlFor="phone" className="text-blue-200">
-                      Phone Number *
-                    </Label>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      required
-                      className="bg-blue-800/50 border-blue-600 text-white placeholder-blue-300 focus:border-blue-400"
-                      placeholder="Enter your phone number"
-                    />
+                    <div>
+                      <Label htmlFor="phone" className="text-blue-200">
+                        Phone Number *
+                      </Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        required
+                        className="bg-blue-800/50 border-blue-600 text-white placeholder-blue-300 focus:border-blue-400"
+                        placeholder="Enter your phone number"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -251,9 +354,8 @@ export default function CheckoutPage() {
                     </Label>
                     <Textarea
                       id="address"
-                      name="address"
                       value={formData.address}
-                      onChange={handleInputChange}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                       required
                       rows={3}
                       className="bg-blue-800/50 border-blue-600 text-white placeholder-blue-300 focus:border-blue-400"
@@ -267,9 +369,8 @@ export default function CheckoutPage() {
                     </Label>
                     <Textarea
                       id="notes"
-                      name="notes"
                       value={formData.notes}
-                      onChange={handleInputChange}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       rows={2}
                       className="bg-blue-800/50 border-blue-600 text-white placeholder-blue-300 focus:border-blue-400"
                       placeholder="Any special instructions for your order"
@@ -280,84 +381,88 @@ export default function CheckoutPage() {
             </motion.div>
 
             {/* Order Summary */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-              <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
+              <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20 sticky top-4">
                 <CardHeader>
-                  <CardTitle className="flex items-center text-white">
-                    <CreditCard className="w-5 h-5 mr-2" />
-                    Order Summary
-                  </CardTitle>
+                  <CardTitle className="text-white">Order Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Order Items */}
                   <div className="space-y-3">
-                    {cartItems.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center">
+                    {cartData.items.map((item) => (
+                      <div key={item.id} className="flex justify-between text-sm">
                         <div className="flex-1">
-                          <p className="font-medium text-white">{item.products?.name}</p>
-                          <p className="text-sm text-blue-200">
-                            Qty: {item.quantity} × Rp {item.products?.price?.toLocaleString("id-ID")}
-                          </p>
+                          <p className="text-white font-medium">{item.products?.name}</p>
+                          <p className="text-blue-300">Qty: {item.quantity}</p>
                         </div>
-                        <p className="font-semibold text-cyan-300">
-                          Rp {((item.products?.price || 0) * item.quantity).toLocaleString("id-ID")}
-                        </p>
+                        <p className="text-white">{formatPrice((item.products?.price || 0) * item.quantity)}</p>
                       </div>
                     ))}
                   </div>
 
                   <Separator className="bg-blue-600/50" />
 
-                  {/* Totals */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-blue-200">Subtotal</span>
-                      <span className="font-semibold">Rp {subtotal.toLocaleString("id-ID")}</span>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className="text-blue-200">Shipping</span>
-                      <span className="font-semibold">
-                        {shipping === 0 ? (
-                          <span className="text-green-400">Free</span>
-                        ) : (
-                          `Rp ${shipping.toLocaleString("id-ID")}`
-                        )}
-                      </span>
-                    </div>
-
-                    {shipping > 0 && <p className="text-xs text-blue-300">Free shipping on orders over Rp 100,000</p>}
-
-                    <Separator className="bg-blue-600/50" />
-
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total</span>
-                      <span className="text-cyan-300">Rp {total.toLocaleString("id-ID")}</span>
-                    </div>
+                  <div className="flex justify-between text-blue-200">
+                    <span>Subtotal</span>
+                    <span>{formatPrice(cartData.subtotal)}</span>
                   </div>
 
-                  {/* Payment Info */}
-                  <div className="bg-blue-800/30 rounded-lg p-4 mt-6">
-                    <h4 className="font-semibold mb-2 text-white">Payment Method</h4>
-                    <p className="text-blue-200 text-sm">Cash on Delivery (COD) - Pay when your order arrives</p>
+                  {/* Applied Discounts */}
+                  {cartData.appliedDiscounts.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-green-400 font-semibold flex items-center gap-2">
+                        <Gift className="w-4 h-4" />
+                        Applied Discounts
+                      </h4>
+                      {cartData.appliedDiscounts.map((applied, index) => (
+                        <div key={index} className="bg-green-900/20 p-3 rounded-lg">
+                          <p className="text-green-300 font-medium text-sm">{applied.discount.name}</p>
+                          <div className="flex justify-between text-sm mt-1">
+                            {applied.freeQuantity > 0 && (
+                              <span className="text-green-200">+{applied.freeQuantity} free items</span>
+                            )}
+                            <span className="text-green-200">-{formatPrice(applied.discountAmount)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {cartData.totalDiscount > 0 && (
+                    <div className="flex justify-between text-green-400 font-semibold">
+                      <span>Total Savings</span>
+                      <span>-{formatPrice(cartData.totalDiscount)}</span>
+                    </div>
+                  )}
+
+                  <Separator className="bg-blue-600/50" />
+
+                  <div className="flex justify-between text-white text-lg font-bold">
+                    <span>Total</span>
+                    <span>{formatPrice(cartData.finalTotal)}</span>
                   </div>
 
-                  {/* Place Order Button */}
                   <Button
                     type="submit"
-                    disabled={submitting}
-                    className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                    size="lg"
+                    disabled={processing}
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                   >
-                    {submitting ? (
-                      "Placing Order..."
+                    {processing ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Processing...
+                      </>
                     ) : (
                       <>
-                        <CheckCircle className="w-5 h-5 mr-2" />
+                        <CreditCard className="w-4 h-4 mr-2" />
                         Place Order
                       </>
                     )}
                   </Button>
+
+                  <p className="text-blue-300 text-xs text-center">
+                    By placing your order, you agree to our terms and conditions.
+                  </p>
                 </CardContent>
               </Card>
             </motion.div>
