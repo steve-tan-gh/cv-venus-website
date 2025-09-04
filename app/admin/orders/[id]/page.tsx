@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { ArrowLeft, Package, User, Calendar, CreditCard, MapPin, Phone, Mail, Edit } from 'lucide-react'
+import { ArrowLeft, Package, User, Calendar, CreditCard, MapPin, Phone, Mail, Edit, Gift } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -93,6 +93,9 @@ export default function AdminOrderDetailsPage({ params }: { params: { id: string
             phone,
             address,
             role
+          ),
+          applied_discounts (
+            *
           ),
           order_items (
             id,
@@ -193,7 +196,26 @@ export default function AdminOrderDetailsPage({ params }: { params: { id: string
     )
   }
 
+  
+
   if (!order) return null
+  const subtotal =
+  order.order_items?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0
+
+  const discountTotal =
+  order.applied_discounts?.reduce(
+    (sum, discount) => sum + (discount.discount_amount || 0),
+    0
+  ) || 0
+
+
+  // const subtotal = order.order_items?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0
+
+  // const discountTotal = order.applied_discounts?.reduce((sum, discount) => sum + (discount.discount_amount || 0), 0)
+
+  // const shipping = order.total_amount - (discountTotal)
+
+  const finalTotal = subtotal - discountTotal
 
   return (
     <div className="min-h-screen text-white">
@@ -232,82 +254,129 @@ export default function AdminOrderDetailsPage({ params }: { params: { id: string
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Order Items */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="lg:col-span-2"
-          >
-            <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Package className="w-5 h-5" />
-                  Order Items ({order.order_items?.length || 0})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {order.order_items && order.order_items.length > 0 ? (
-                    order.order_items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-4 p-4 bg-blue-800/20 rounded-lg">
-                        <div className="w-16 h-16 bg-blue-700/50 rounded-lg flex items-center justify-center overflow-hidden">
-                          {item.products.image_url ? (
-                            <img
-                              src={item.products.image_url || "/placeholder.svg"}
-                              alt={item.products.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Package className="w-8 h-8 text-blue-400" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-white">{item.products.name}</h3>
-                          <p className="text-blue-300 text-sm">Product ID: {item.products.id}</p>
-                          <div className="flex items-center gap-4 mt-2">
-                            <span className="text-blue-200">Qty: {item.quantity}</span>
-                            <span className="text-blue-200">Price: {formatCurrency(item.price)}</span>
-                            <span className="font-semibold text-cyan-300">
-                              Total: {formatCurrency(item.price * item.quantity)}
-                            </span>
+          <div className="lg:col-span-2 space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="lg:col-span-2"
+            >
+              <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Package className="w-5 h-5" />
+                    Order Items ({order.order_items?.length || 0})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {order.order_items && order.order_items.length > 0 ? (
+                      order.order_items.map((item) => (
+                        <div key={item.id} className="flex items-center gap-4 p-4 bg-blue-800/20 rounded-lg">
+                          <div className="w-16 h-16 bg-blue-700/50 rounded-lg flex items-center justify-center overflow-hidden">
+                            {item.products.image_url ? (
+                              <img
+                                src={item.products.image_url || "/placeholder.svg"}
+                                alt={item.products.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Package className="w-8 h-8 text-blue-400" />
+                            )}
                           </div>
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-white">{item.products.name}</h3>
+                            <p className="text-blue-300 text-sm">Product ID: {item.products.id}</p>
+                            <div className="flex items-center gap-4 mt-2">
+                              <span className="text-blue-200">Qty: {item.quantity}</span>
+                              <span className="text-blue-200">Price: {formatCurrency(item.price)}</span>
+                              <span className="font-semibold text-cyan-300">
+                                Total: {formatCurrency(item.price * item.quantity)}
+                              </span>
+                            </div>
+                          </div>
+                          <Button asChild variant="ghost" size="sm">
+                            <Link href={`/shop/${item.products.slug}`}>
+                              View Product
+                            </Link>
+                          </Button>
                         </div>
-                        <Button asChild variant="ghost" size="sm">
-                          <Link href={`/shop/${item.products.slug}`}>
-                            View Product
-                          </Link>
-                        </Button>
+                      ))
+                    ) : (
+                      <div className="text-center py-8">
+                        <Package className="w-16 h-16 mx-auto mb-4 text-blue-400" />
+                        <p className="text-blue-300">No items found in this order</p>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8">
-                      <Package className="w-16 h-16 mx-auto mb-4 text-blue-400" />
-                      <p className="text-blue-300">No items found in this order</p>
+                    )}
+                  </div>
+
+                  <Separator className="my-6 bg-blue-600/50" />
+
+                  {/* Order Summary */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-blue-200">
+                      <span>Subtotal:</span>
+                      <span>{formatCurrency(order.total_amount)}</span>
                     </div>
-                  )}
-                </div>
+                    <div className="flex justify-between text-blue-200">
+                      <span>Shipping:</span>
+                      <span>Free</span>
+                    </div>
+                    <Separator className="bg-blue-600/50" />
+                    <div className="flex justify-between text-lg font-semibold text-white">
+                      <span>Total:</span>
+                      <span>{formatCurrency(order.total_amount)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
 
-                <Separator className="my-6 bg-blue-600/50" />
-
-                {/* Order Summary */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-blue-200">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrency(order.total_amount)}</span>
-                  </div>
-                  <div className="flex justify-between text-blue-200">
-                    <span>Shipping:</span>
-                    <span>Free</span>
-                  </div>
-                  <Separator className="bg-blue-600/50" />
-                  <div className="flex justify-between text-lg font-semibold text-white">
-                    <span>Total:</span>
-                    <span>{formatCurrency(order.total_amount)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+            {/* Applied Discounts */}
+              {order.applied_discounts && order.applied_discounts.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+                  <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Gift className="w-5 h-5" />
+                        Applied Discounts
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {order.applied_discounts.map((discount) => (
+                          <div key={discount.id} className="bg-green-900/20 p-4 rounded-lg">
+                            <h4 className="font-semibold text-green-300 mb-2">{discount.discount_name}</h4>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <p className="text-blue-200">Type</p>
+                                <p className="text-white capitalize">{discount.discount_type.replace("_", " ")}</p>
+                              </div>
+                              <div>
+                                <p className="text-blue-200">Original Quantity</p>
+                                <p className="text-white">{discount.original_quantity}</p>
+                              </div>
+                              {discount.free_quantity && (
+                                <div>
+                                  <p className="text-blue-200">Free Items</p>
+                                  <p className="text-green-300">+{discount.free_quantity}</p>
+                                </div>
+                              )}
+                              {discount.discount_amount && (
+                                <div>
+                                  <p className="text-blue-200">Discount Amount</p>
+                                  <p className="text-green-300">-Rp {discount.discount_amount.toLocaleString("id-ID")}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+          </div>
 
           {/* Order Info & Customer Details */}
           <motion.div

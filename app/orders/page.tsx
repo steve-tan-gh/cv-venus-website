@@ -4,19 +4,20 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { Package, Clock, Truck, CheckCircle, X, Eye } from "lucide-react"
+import { Package, Eye, Calendar, MapPin, Phone, Gift } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { VenusBackground } from "@/components/ui/venus-background"
 import { Navbar } from "@/components/navbar"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 import type { Order } from "@/lib/supabase"
 
 export default function OrdersPage() {
+  const [user, setUser] = useState<any>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -40,10 +41,12 @@ export default function OrdersPage() {
           order_items (
             *,
             products (
+              id,
               name,
               image_url
             )
-          )
+          ),
+          applied_discounts (*)
         `)
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
@@ -52,43 +55,34 @@ export default function OrdersPage() {
       setOrders(data || [])
     } catch (error) {
       console.error("Error fetching orders:", error)
+      toast.error("Failed to load orders")
     } finally {
       setLoading(false)
-    }
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <Clock className="w-4 h-4" />
-      case "packed":
-        return <Package className="w-4 h-4" />
-      case "shipped":
-        return <Truck className="w-4 h-4" />
-      case "delivered":
-        return <CheckCircle className="w-4 h-4" />
-      case "cancelled":
-        return <X className="w-4 h-4" />
-      default:
-        return <Clock className="w-4 h-4" />
     }
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
-        return "bg-yellow-600"
+        return "bg-yellow-500"
       case "packed":
-        return "bg-blue-600"
+        return "bg-blue-500"
       case "shipped":
-        return "bg-purple-600"
+        return "bg-purple-500"
       case "delivered":
-        return "bg-green-600"
+        return "bg-green-500"
       case "cancelled":
-        return "bg-red-600"
+        return "bg-red-500"
       default:
-        return "bg-gray-600"
+        return "bg-gray-500"
     }
+  }
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+    }).format(price)
   }
 
   const formatDate = (dateString: string) => {
@@ -109,10 +103,30 @@ export default function OrdersPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="animate-pulse space-y-4">
             <div className="bg-blue-300/20 h-8 w-48 rounded"></div>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-blue-300/20 h-32 rounded-lg"></div>
-            ))}
+            <div className="bg-blue-300/20 h-96 rounded-lg"></div>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="min-h-screen text-white">
+        <VenusBackground />
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16">
+            <Package className="w-24 h-24 mx-auto mb-6 text-blue-400" />
+            <h1 className="text-3xl font-bold mb-4">No orders yet</h1>
+            <p className="text-blue-200 mb-8">Start shopping to see your orders here!</p>
+            <Button
+              asChild
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              <Link href="/shop">Start Shopping</Link>
+            </Button>
+          </motion.div>
         </div>
       </div>
     )
@@ -124,111 +138,158 @@ export default function OrdersPage() {
       <Navbar />
 
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <h1 className="text-3xl font-bold mb-4">Order History</h1>
-          <p className="text-blue-200">Track your orders and view purchase history</p>
+          <h1 className="text-3xl font-bold mb-2">My Orders</h1>
+          <p className="text-blue-200">Track and manage your orders</p>
         </motion.div>
 
-        {orders.length === 0 ? (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-12">
-            <Package className="w-24 h-24 mx-auto mb-6 text-blue-400" />
-            <h2 className="text-2xl font-bold mb-4">No orders yet</h2>
-            <p className="text-blue-200 mb-8">Start shopping to see your orders here!</p>
-            <Button
-              asChild
-              size="lg"
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+        <div className="space-y-6">
+          {orders.map((order, index) => (
+            <motion.div
+              key={order.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
             >
-              <Link href="/shop">Start Shopping</Link>
-            </Button>
-          </motion.div>
-        ) : (
-          <div className="space-y-6">
-            {orders.map((order, index) => (
-              <motion.div
-                key={order.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
-                  <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div>
-                        <CardTitle className="text-white">Order #{order.id}</CardTitle>
-                        <p className="text-blue-200 text-sm">{formatDate(order.created_at)}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Badge className={`${getStatusColor(order.status)} text-white`}>
-                          {getStatusIcon(order.status)}
-                          <span className="ml-1 capitalize">{order.status}</span>
-                        </Badge>
-                        <Button
-                          asChild
-                          variant="outline"
-                          size="sm"
-                          className="border-blue-400 text-blue-100 hover:bg-blue-800/50 bg-transparent"
-                        >
-                          <Link href={`/orders/${order.id}`}>
-                            <Eye className="w-4 h-4 mr-1" />
-                            View Details
-                          </Link>
-                        </Button>
+              <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-white">Order #{order.id}</CardTitle>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Calendar className="w-4 h-4 text-blue-400" />
+                        <span className="text-blue-200 text-sm">{formatDate(order.created_at)}</span>
                       </div>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Order Items */}
-                      <div>
-                        <h4 className="font-semibold mb-3 text-white">Items ({order.order_items?.length || 0})</h4>
-                        <div className="space-y-2">
-                          {order.order_items?.slice(0, 3).map((item) => (
-                            <div key={item.id} className="flex justify-between text-sm">
-                              <span className="text-blue-200">
-                                {item.products?.name} × {item.quantity}
-                              </span>
-                              <span className="text-cyan-300">
-                                Rp {(item.price * item.quantity).toLocaleString("id-ID")}
-                              </span>
-                            </div>
-                          ))}
-                          {(order.order_items?.length || 0) > 3 && (
-                            <p className="text-blue-300 text-sm">+{(order.order_items?.length || 0) - 3} more items</p>
-                          )}
+                    <Badge className={`${getStatusColor(order.status)} text-white`}>
+                      {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Order Items */}
+                  <div className="space-y-2">
+                    <h4 className="text-white font-semibold">Items ({order.order_items?.length || 0})</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {order.order_items?.slice(0, 3).map((item) => (
+                        <div key={item.id} className="flex items-center gap-3 p-2 bg-blue-800/20 rounded">
+                          <div className="w-12 h-12 bg-blue-700/30 rounded overflow-hidden">
+                            {item.products?.image_url ? (
+                              <img
+                                src={item.products.image_url || "/placeholder.svg"}
+                                alt={item.products.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Package className="w-6 h-6 text-blue-400" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-medium truncate">{item.products?.name}</p>
+                            <p className="text-blue-200 text-xs">
+                              {item.quantity} × {formatPrice(item.price)}
+                              {item.free_quantity && item.free_quantity > 0 && (
+                                <span className="text-green-400 ml-1">+ {item.free_quantity} free</span>
+                              )}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      ))}
+                      {(order.order_items?.length || 0) > 3 && (
+                        <div className="flex items-center justify-center p-2 bg-blue-800/20 rounded">
+                          <span className="text-blue-200 text-sm">
+                            +{(order.order_items?.length || 0) - 3} more items
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                      {/* Order Summary */}
-                      <div>
-                        <h4 className="font-semibold mb-3 text-white">Order Summary</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-blue-200">Total Amount</span>
-                            <span className="font-semibold text-cyan-300">
-                              Rp {order.total_amount.toLocaleString("id-ID")}
-                            </span>
-                          </div>
-                          {order.tracking_number && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-blue-200">Tracking Number</span>
-                              <span className="font-mono text-cyan-300">{order.tracking_number}</span>
+                  {/* Applied Discounts */}
+                  {order.applied_discounts && order.applied_discounts.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-green-400 font-semibold flex items-center gap-2">
+                        <Gift className="w-4 h-4" />
+                        Applied Discounts
+                      </h4>
+                      <div className="space-y-1">
+                        {order.applied_discounts.map((discount) => (
+                          <div key={discount.id} className="bg-green-900/20 p-2 rounded text-sm">
+                            <div className="flex justify-between items-center">
+                              <span className="text-green-300 font-medium">{discount.discount_name}</span>
+                              <span className="text-green-200">
+                                {discount.discount_amount && discount.discount_amount > 0
+                                  ? `-${formatPrice(discount.discount_amount)}`
+                                  : ""}
+                                {discount.free_quantity && discount.free_quantity > 0
+                                  ? ` +${discount.free_quantity} free`
+                                  : ""}
+                              </span>
                             </div>
-                          )}
-                          <div className="text-sm">
-                            <span className="text-blue-200">Shipping Address:</span>
-                            <p className="text-white mt-1">{order.shipping_address}</p>
                           </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shipping Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-blue-600/30">
+                    <div>
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-4 h-4 text-blue-400 mt-0.5" />
+                        <div>
+                          <p className="text-blue-200 text-sm">Shipping Address</p>
+                          <p className="text-white text-sm">{order.shipping_address}</p>
                         </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-blue-400" />
+                        <div>
+                          <p className="text-blue-200 text-sm">Phone</p>
+                          <p className="text-white text-sm">{order.shipping_phone}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Order Total */}
+                  <div className="flex justify-between items-center pt-2 border-t border-blue-600/30">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-blue-200">Subtotal:</span>
+                        <span className="text-blue-200">{formatPrice(order.total_amount)}</span>
+                      </div>
+                      {order.discount_amount && order.discount_amount > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-green-400">Discount:</span>
+                          <span className="text-green-400">-{formatPrice(order.discount_amount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-semibold">
+                        <span className="text-white">Total:</span>
+                        <span className="text-white">{formatPrice(order.final_amount)}</span>
+                      </div>
+                    </div>
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="border-blue-400 text-blue-100 hover:bg-blue-700/50 bg-transparent"
+                    >
+                      <Link href={`/orders/${order.id}`}>
+                        <Eye className="w-4 h-4 mr-2" />
+                        View Details
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
       </div>
     </div>
   )

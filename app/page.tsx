@@ -4,22 +4,31 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { motion } from "framer-motion"
-import { ArrowRight, Star, Truck, Shield, Clock } from "lucide-react"
+import { ArrowRight, Star, Truck, Shield, Clock, Gift, Percent, Target, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { VenusBackground } from "@/components/ui/venus-background"
 import { Navbar } from "@/components/navbar"
 import { supabase } from "@/lib/supabase"
+import { getActiveDiscounts } from "@/lib/cart"
 import type { Product } from "@/lib/supabase"
+import type { Discount } from "@/lib/supabase"
 
 export default function HomePage() {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
 
   useEffect(() => {
-    fetchFeaturedProducts()
-  }, [])
+    const fetchData = async () => {
+      await fetchFeaturedProducts();
+      const activeDiscounts = await getActiveDiscounts();
+      setDiscounts(activeDiscounts);
+    };
+
+    fetchData();
+  }, []);
 
   const fetchFeaturedProducts = async () => {
     try {
@@ -327,6 +336,58 @@ export default function HomePage() {
             ))}
           </motion.div>
         </div>
+      </section>
+
+      {/* Show Discount */}
+      <section className="py-20 px-4">
+        <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-3xl font-bold mb-4">Discount List</h2>
+            <p className="text-blue-200">Trusted distributors of premium brands</p>
+          </motion.div>
+        <Card className="bg-white/10 backdrop-blur-sm border-blue-400/10">
+          <CardHeader>
+            <CardTitle className="text-white">Available Discounts ({discounts.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {discounts.length > 0 ? (
+              <div className="space-y-3">
+                {discounts.map((discount) => (
+                  <div key={discount.id} className="p-3 border border-blue-600/30 rounded-lg bg-blue-900/20">
+                    <h3 className="text-lg font-semibold text-white">{discount.name}</h3>
+                    <p className="text-blue-300">{discount.description}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge className={discount.type === "buy_x_get_y_free" ? "bg-purple-600" : "bg-orange-600"}>
+                        {discount.type === "buy_x_get_y_free" ? <Gift className="w-3 h-3 mr-1" /> : <Percent className="w-3 h-3 mr-1" />}
+                        {discount.type === "buy_x_get_y_free" ? "Free Items" : "Percentage"}
+                      </Badge>
+                      <Badge variant="outline" className="border-blue-400 text-blue-200">
+                        <Target className="w-3 h-3 mr-1" />
+                        {discount.applies_to}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 text-sm text-blue-200">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> Start: {discount.start_date || "No limit"}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> End: {discount.end_date || "No limit"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-blue-300">No active discounts right now.</p>
+            )}
+          </CardContent>
+        </Card>
+
       </section>
 
       {/* CTA Section */}

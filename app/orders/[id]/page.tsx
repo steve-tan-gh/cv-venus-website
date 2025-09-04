@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { ArrowLeft, Package, Clock, Truck, CheckCircle, X, MapPin, Phone, User } from "lucide-react"
+import { ArrowLeft, Package, Clock, Truck, CheckCircle, X, MapPin, Phone, User, Gift } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +49,9 @@ export default function OrderDetailPage() {
               image_url,
               slug
             )
+          ),
+          applied_discounts (
+            *
           ),
           profiles (
             full_name,
@@ -121,6 +124,8 @@ export default function OrderDetailPage() {
     }))
   }
 
+  
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("id-ID", {
       year: "numeric",
@@ -162,6 +167,24 @@ export default function OrderDetailPage() {
   }
 
   const statusSteps = getStatusSteps()
+
+  const subtotal =
+  order.order_items?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0
+
+const discountTotal =
+  order.applied_discounts?.reduce(
+    (sum, discount) => sum + (discount.discount_amount || 0),
+    0
+  ) || 0
+
+
+  // const subtotal = order.order_items?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0
+
+  // const discountTotal = order.applied_discounts?.reduce((sum, discount) => sum + (discount.discount_amount || 0), 0)
+
+  // const shipping = order.total_amount - (discountTotal)
+
+  const finalTotal = subtotal - discountTotal
 
   return (
     <div className="min-h-screen text-white">
@@ -287,6 +310,51 @@ export default function OrderDetailPage() {
                 </CardContent>
               </Card>
             </motion.div>
+
+            {/* Applied Discounts */}
+            {order.applied_discounts && order.applied_discounts.length > 0 && (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+                <Card className="bg-white/10 backdrop-blur-sm border-blue-400/20">
+                  <CardHeader>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Gift className="w-5 h-5" />
+                      Applied Discounts
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {order.applied_discounts.map((discount) => (
+                        <div key={discount.id} className="bg-green-900/20 p-4 rounded-lg">
+                          <h4 className="font-semibold text-green-300 mb-2">{discount.discount_name}</h4>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-blue-200">Type</p>
+                              <p className="text-white capitalize">{discount.discount_type.replace("_", " ")}</p>
+                            </div>
+                            <div>
+                              <p className="text-blue-200">Original Quantity</p>
+                              <p className="text-white">{discount.original_quantity}</p>
+                            </div>
+                            {discount.free_quantity && (
+                              <div>
+                                <p className="text-blue-200">Free Items</p>
+                                <p className="text-green-300">+{discount.free_quantity}</p>
+                              </div>
+                            )}
+                            {discount.discount_amount && (
+                              <div>
+                                <p className="text-blue-200">Discount Amount</p>
+                                <p className="text-green-300">-Rp {discount.discount_amount.toLocaleString("id-ID")}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
           </div>
 
           {/* Order Summary & Shipping */}
@@ -318,10 +386,21 @@ export default function OrderDetailPage() {
                         ).toLocaleString("id-ID")}
                       </span>
                     </div>
+                    {order.applied_discounts && order.applied_discounts.length > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-blue-200">Discounts</span>
+                        <span className="font-semibold">
+                          -Rp{" "}
+                          {order.applied_discounts
+                            .reduce((sum, discount) => sum + (discount.discount_amount || 0), 0)
+                            .toLocaleString("id-ID")}
+                        </span>
+                      </div>
+                    )}
                     <Separator className="bg-blue-600/50" />
                     <div className="flex justify-between text-lg font-bold">
                       <span>Total</span>
-                      <span className="text-cyan-300">Rp {order.total_amount.toLocaleString("id-ID")}</span>
+                      <span className="text-cyan-300">Rp {finalTotal.toLocaleString("id-ID")}</span>
                     </div>
                   </div>
                 </CardContent>
