@@ -1,138 +1,204 @@
-CV. Venus — E-commerce (README)
+# CV. Venus — E-commerce Web App
 
-CV. Venus — Full-stack e-commerce web app for a local distributor of Garuda Food, Mondelez, Cleo in North Halmahera. Tema: planet Venus (dominant blue, gradients, glow). Backend: Supabase. Frontend: Next.js + Tailwind (recommended).
+**CV. Venus** is a full-stack e-commerce web application for a local distributor of **Garuda Food, Mondelez, and Cleo** serving **North Halmahera (Halmahera Utara), Indonesia**. The UI is inspired by the planet *Venus* with a dominant blue palette, soft gradients, and subtle cosmic effects.
 
-🔎 Tentang Proyek
+---
 
-Proyek ini menargetkan toko/distributor yang ingin:
+## 🔎 Project Overview
 
-Menampilkan katalog produk (snack, biskuit, minuman, sembako, dll).
+This project aims to provide a fast, mobile-friendly shopping experience for local customers while giving the distributor a powerful admin dashboard to manage inventory, orders, and promotions without accessing the database console directly.
 
-Fitur keranjang, checkout, riwayat pesanan.
+Key goals:
 
-Admin dashboard untuk manage orders dan manage inventory (Add/Edit/Delete produk, update stock).
+* Display product catalog (snacks, biscuits, drinks, daily needs).
+* Allow customers to add to cart, checkout, and view order history.
+* Provide admin features: manage products (Add/Edit/Delete), manage stock, and process orders.
+* Support promotional rules like **Buy X Get Y (free)** and **percentage discounts**.
+* Automatically decrement stock when orders are completed.
 
-Sistem diskon otomatis (contoh: Buy 10 get 1 free, Buy 10 get 10% off).
+---
 
-Stok otomatis berkurang saat checkout.
+## ✨ Main Features
 
-Otentikasi dan role-based access (admin / user) via Supabase Auth.
+* Public pages: **Home**, **About**, **Shop / Items**, **Search (live + debounced)**, **Cart**, **Checkout**, **Order History**, **Account**.
+* Admin Dashboard: Orders to deliver, update order status, add tracking number.
+* Inventory Management: Add / Edit / Delete products, upload images, update stock.
+* Discount Engine: supports `BUY_X_GET_Y` and `PERCENTAGE` discount types and applies discounts server-side at checkout.
+* Stock Management: stock is validated and reduced automatically during checkout (transactional/atomic).
+* Notifications: UI toasts, loading skeletons, and smooth animations for better UX.
 
-✨ Fitur Utama
+---
 
-Halaman: Home, About, Shop/Items, Search (live, debounced), Cart, Checkout, Order History, Account.
+## 🧰 Tech Stack (recommended)
 
-Admin: Orders to Deliver, Inventory Management (Add/Edit/Delete), input tracking number.
+* **Frontend**: Next.js (React) + Tailwind CSS (+ Framer Motion for animations)
+* **Backend & DB**: Supabase (Postgres, Auth, Storage)
+* **Hosting**: Vercel (frontend) + Supabase (database & storage)
+* **Authentication**: Supabase Auth (roles: `user`, `admin`)
+* **Server-side logic**: Edge Functions / Next.js API routes using `SUPABASE_SERVICE_ROLE_KEY` for sensitive transactions
 
-Discount engine: mendukung promo berbasis kuantitas & persentase.
+---
 
-Stock management: pengurangan stok otomatis lewat trigger/transaction.
+## ⚙️ Quick Start
 
-Supabase Storage untuk gambar produk.
+### Prerequisites
 
-🛠 Tech Stack
+* Node.js (v18+ recommended)
+* npm or pnpm
+* Supabase account
 
-Frontend: Next.js (React), Tailwind CSS, Framer Motion (opsional)
+### Local setup
 
-Backend & DB: Supabase (Postgres, Auth, Storage, Realtime)
-
-Deployment: Vercel (frontend) + Supabase hosting for DB
-
-(Opsional) Serverless functions / Edge API untuk logic sensitif (menggunakan SUPABASE_SERVICE_ROLE_KEY)
-
-🧩 Quick Start (local)
-Prasyarat
-
-Node.js >= 18
-
-npm / pnpm
-
-Akun Supabase
-
-1. Clone & install
+```bash
 git clone <repo-url>
 cd cv-venus
 npm install
+```
 
-2. Buat project Supabase
+Create `.env.local` (do not commit):
 
-Di Supabase Dashboard → New project → pilih region (mis: ap-southeast-1 untuk user di Indonesia).
-
-Buat tabel: users (via Supabase Auth + profile), products, orders, order_items, discounts.
-
-3. .env.local (contoh)
-
-Jangan commit file ini ke GitHub
-
+```
 NEXT_PUBLIC_SUPABASE_URL=https://xyz.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=pk.xxxxxx
-SUPABASE_SERVICE_ROLE_KEY=sk.xxxxxx   # HANYA di server, jangan expose di frontend
+SUPABASE_SERVICE_ROLE_KEY=sk.xxxxxx   # server-only
+```
 
-4. Run dev
+Run dev server:
+
+```bash
 npm run dev
-# buka http://localhost:3000
+# open http://localhost:3000
+```
 
-📚 Contoh Struktur Tabel (Ringkas)
+---
 
-products
+## 🗂 Suggested Database Tables (brief)
 
-id (uuid, pk)
+**products**
 
-name (text)
+* id (uuid PK)
+* name
+* slug
+* description
+* price (numeric)
+* stock (int)
+* category
+* brand
+* image\_url
+* created\_at
 
-slug (text)
+**orders**
 
-description (text)
+* id (uuid PK)
+* user\_id (uuid FK to auth.users)
+* total (numeric)
+* status (text) — pending, packed, shipped, delivered
+* shipping\_address (jsonb)
+* tracking\_number
+* created\_at
 
-price (numeric)
+**order\_items**
 
-stock (int)
+* id
+* order\_id
+* product\_id
+* quantity
+* unit\_price
 
-category (text)
+**discounts**
 
-brand (text)
+* id
+* type (`BUY_X_GET_Y` | `PERCENTAGE`)
+* params (jsonb) — e.g. `{ "x": 10, "y": 1 }` or `{ "min_qty": 10, "percent": 10 }`
+* active (boolean)
 
-image_url (text)
+---
 
-created_at (timestamptz)
+## 🔐 Security & Best Practices
 
-orders
+* Enable **Row Level Security (RLS)** in Supabase and create policies so only admin users can `INSERT`/`UPDATE`/`DELETE` on `products` and other protected tables.
+* Perform critical operations such as *creating an order*, *applying discounts*, and *decrementing stock* on server-side using `SUPABASE_SERVICE_ROLE_KEY` inside Edge Functions or API routes.
+* Never expose service role keys in client-side code.
 
-id (uuid, pk)
+---
 
-user_id (uuid, fk to auth.users)
+## 🔁 Stock Decrement & Atomic Checkout
 
-total (numeric)
+Implement checkout as an atomic server-side transaction:
 
-status (text) — e.g., pending, packed, shipped, delivered
+1. Validate cart items & available stock.
+2. Apply discounts (server-side) and recalc totals.
+3. Insert `orders` and `order_items` in a single transaction.
+4. Decrement product stock (or use DB trigger) within the same transaction.
 
-shipping_address (jsonb)
+Optional example SQL trigger to fail when stock is insufficient (illustrative):
 
-tracking_number (text)
+```sql
+CREATE OR REPLACE FUNCTION decrease_stock()
+RETURNS trigger AS $$
+BEGIN
+  UPDATE products
+  SET stock = stock - NEW.quantity
+  WHERE id = NEW.product_id AND stock >= NEW.quantity;
 
-created_at (timestamptz)
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Insufficient stock for product %', NEW.product_id;
+  END IF;
 
-order_items
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-id (uuid)
+CREATE TRIGGER trg_decrease_stock
+AFTER INSERT ON order_items
+FOR EACH ROW
+EXECUTE FUNCTION decrease_stock();
+```
 
-order_id (uuid)
+> Note: using server-side transaction + service role is recommended over relying only on triggers, so you can handle rollback and better error messages.
 
-product_id (uuid)
+---
 
-quantity (int)
+## 🎯 Promo / Discount Logic (server-side)
 
-unit_price (numeric)
+Implement the discount application logic on server to avoid client manipulation.
 
-discounts
+* **BUY\_X\_GET\_Y** (`{ x, y }`): `free = floor(qty / x) * y` → add `free` quantity or add line item with `unit_price = 0`.
+* **PERCENTAGE** (`{ min_qty, percent }`): if `qty >= min_qty`, discount = `line_total * percent / 100`.
 
-id
+Example: buying 10 cartons with `BUY_X_GET_Y` (x=10, y=1) → customer receives 11 cartons but pays for 10.
 
-code (text, optional)
+---
 
-type (BUY_X_GET_Y | PERCENTAGE)
+## 🛠 Admin Features
 
-params (jsonb) — e.g. { "x":10, "y":1 } or { "min_qty":10, "percent":10 }
+* Protected admin pages where authenticated admin can:
 
-active (boolean)
+  * Add/Edit/Delete products
+  * Update stock and product images (Supabase Storage)
+  * View & process orders, change status, add tracking
+* Admin actions use server-side endpoints to maintain security and atomicity.
 
+---
+
+## 📦 Deployment
+
+* Push frontend to **Vercel** and set environment variables in Vercel dashboard.
+* Supabase remains as the database & storage provider.
+* For critical API endpoints, use Vercel Serverless Functions or Supabase Edge Functions with `SUPABASE_SERVICE_ROLE_KEY`.
+
+---
+
+## 🤝 Contribution
+
+Contributions are welcome. Open an issue or submit a PR. If you'd like help generating SQL schema, API route examples (Next.js), or admin UI components, I can provide them.
+
+---
+
+## 📬 Contact
+
+If you want me to: create `README.md` directly in your repo, add SQL schema, or scaffold admin pages, tell me which part to generate next.
+
+---
+
+*README generated for CV. Venus — E-commerce.*
